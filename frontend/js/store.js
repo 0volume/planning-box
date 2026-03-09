@@ -48,7 +48,7 @@ const Store = {
   // Create new data store
   async createNewData(password) {
     const data = {
-      uploads: [],
+      ideas: [],
       plans: [],
       comments: [],
       version: 1
