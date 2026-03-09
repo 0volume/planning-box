@@ -7,14 +7,19 @@ let currentUser = null;
 let currentData = null;
 
 // Initialize
-function init() {
+async function init() {
   try {
+    // Try to sync from shared Gist first
+    const syncedData = await Store.syncFromGist();
+    if (syncedData) {
+      console.log('Loaded shared data from Gist');
+    }
+    
     currentUser = Store.getUser();
     if (currentUser) {
       currentData = Store.getData();
-      // If no data, create empty
       if (!currentData) {
-        currentData = { ideas: [], plans: [], version: 1 };
+        currentData = { ideas: [], plans: [], version: 2 };
         Store.saveData(currentData);
       }
     }
@@ -63,7 +68,7 @@ function renderLogin() {
     </div>
   `;
   
-  document.getElementById('login-form').addEventListener('submit', (e) => {
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const username = form.username.value.trim();
@@ -75,7 +80,7 @@ function renderLogin() {
     
     // Ensure we always have data structure
     if (!currentData || !currentData.ideas) {
-      currentData = { ideas: [], plans: [], version: 1 };
+      currentData = { ideas: [], plans: [], version: 2 };
       Store.saveData(currentData);
     }
     
@@ -84,7 +89,7 @@ function renderLogin() {
 }
 
 // Dashboard
-function renderDashboard(filterStatus = 'all') {
+async function renderDashboard(filterStatus = 'all') {
   if (!currentData) currentData = Store.getData();
   
   const ideas = currentData.ideas || [];
@@ -481,7 +486,8 @@ function renderBackup() {
       return;
     }
     try {
-      currentData = await Store.importFromFile(file);
+      await Store.importFromFile(file);
+      currentData = Store.getData();
       alert('Backup restored successfully!');
       renderDashboard();
     } catch (e) {
