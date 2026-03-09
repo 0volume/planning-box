@@ -8,9 +8,20 @@ let currentData = null;
 
 // Initialize
 function init() {
-  currentUser = Store.getUser();
-  if (currentUser) {
-    currentData = Store.getData();
+  try {
+    currentUser = Store.getUser();
+    if (currentUser) {
+      currentData = Store.getData();
+      // If no data, create empty
+      if (!currentData) {
+        currentData = { ideas: [], plans: [], version: 1 };
+        Store.saveData(currentData);
+      }
+    }
+  } catch (e) {
+    console.error('Init error:', e);
+    currentUser = null;
+    currentData = null;
   }
   renderLoginOrDashboard();
 }
@@ -61,6 +72,13 @@ function renderLogin() {
     currentUser = { username };
     Store.setUser(currentUser);
     currentData = Store.getData();
+    
+    // Ensure we always have data structure
+    if (!currentData || !currentData.ideas) {
+      currentData = { ideas: [], plans: [], version: 1 };
+      Store.saveData(currentData);
+    }
+    
     renderDashboard();
   });
 }
@@ -173,8 +191,8 @@ function setupListeners() {
     el.addEventListener('click', (e) => {
       e.preventDefault();
       currentUser = null;
-      currentData = null;
-      Store.clear();
+      // Don't clear data - keep it!
+      localStorage.removeItem('planningbox_user'); // Only clear user, not data
       renderLogin();
     });
   });
