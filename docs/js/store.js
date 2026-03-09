@@ -1,105 +1,76 @@
 /**
- * Local Storage Data Store
- * All data encrypted with user's password
+ * Planning Box - Local Storage with Backup
+ * Shared via manual export/import for now
  */
 
 const Store = {
-  KEYS: {
-    USER: 'planningbox_user',
-    DATA: 'planningbox_data',
-    SALT: 'planningbox_salt'
-  },
+  DATA_KEY: 'planningbox_data',
+  USER_KEY: 'planningbox_user',
 
   // Get current user
   getUser() {
-    const user = localStorage.getItem(this.KEYS.USER);
-    return user ? JSON.parse(user) : null;
+    return localStorage.getItem(this.USER_KEY) ? JSON.parse(localStorage.getItem(this.USER_KEY)) : null;
   },
 
   // Set current user
   setUser(user) {
-    localStorage.setItem(this.KEYS.USER, JSON.stringify(user));
+    localStorage.setItem(this.USER_KEY, JSON.stringify(user));
   },
 
-  // Clear all data (logout)
-  clear() {
-    localStorage.removeItem(this.KEYS.USER);
-    localStorage.removeItem(this.KEYS.DATA);
-    localStorage.removeItem(this.KEYS.SALT);
-  },
-
-  // Get data store
-  async getData(password) {
-    const encrypted = localStorage.getItem(this.KEYS.DATA);
-    const salt = localStorage.getItem(this.KEYS.SALT);
-    
-    if (!encrypted || !salt) {
-      return this.createNewData(password);
+  // Get data (create default if none)
+  getData() {
+    const data = localStorage.getItem(this.DATA_KEY);
+    if (!data) {
+      return { ideas: [], plans: [], version: 1 };
     }
-    
-    try {
-      const data = await Crypto.decrypt(encrypted, password);
-      return data;
-    } catch (e) {
-      throw new Error('Invalid password');
-    }
+    return JSON.parse(data);
   },
 
-  // Create new data store
-  async createNewData(password) {
-    const data = {
-      ideas: [],
-      plans: [],
-      comments: [],
-      version: 1
-    };
-    
-    await this.saveData(data, password);
+  // Save data
+  saveData(data) {
+    localStorage.setItem(this.DATA_KEY, JSON.stringify(data));
     return data;
   },
 
-  // Save data (encrypts with password)
-  async saveData(data, password) {
-    const encoder = new TextEncoder();
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    
-    localStorage.setItem(this.KEYS.SALT, btoa(String.fromCharCode(...salt)));
-    
-    const encrypted = await Crypto.encrypt(data, password);
-    localStorage.setItem(this.KEYS.DATA, encrypted);
+  // Create new data store
+  createNewData() {
+    return this.saveData({ ideas: [], plans: [], version: 1 });
   },
 
-  // Export data as JSON (for agents)
-  exportJSON() {
-    const data = localStorage.getItem(this.KEYS.DATA);
-    const salt = localStorage.getItem(this.KEYS.SALT);
-    
-    if (!data) return null;
-    
-    return JSON.stringify({
-      salt,
-      data,
-      exportedAt: new Date().toISOString()
-    }, null, 2);
+  // Clear all
+  clear() {
+    localStorage.removeItem(this.DATA_KEY);
+    localStorage.removeItem(this.USER_KEY);
   },
 
-  // Import JSON data
-  async importJSON(jsonString, password) {
-    try {
-      const imported = JSON.parse(jsonString);
-      
-      if (imported.salt) {
-        localStorage.setItem(this.KEYS.SALT, imported.salt);
-      }
-      if (imported.data) {
-        localStorage.setItem(this.KEYS.DATA, imported.data);
-      }
-      
-      // Verify it works
-      return await this.getData(password);
-    } catch (e) {
-      throw new Error('Invalid import data');
-    }
+  // Export to JSON file
+  exportToFile() {
+    const data = this.getData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'planning-box-backup-' + new Date().toISOString().split('T')[0] + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  // Import from file
+  importFromFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          this.saveData(data);
+          resolve(data);
+        } catch (err) {
+          reject(new Error('Invalid JSON file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
   },
 
   // Generate unique ID

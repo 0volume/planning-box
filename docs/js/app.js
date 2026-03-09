@@ -1,28 +1,16 @@
 /**
- * Planning Box - Self-contained SPA
- * All data encrypted and stored locally
+ * Planning Box - SPA
  */
 
 const app = document.getElementById('app');
 let currentUser = null;
 let currentData = null;
-let currentPassword = null;
 
-// Initialize - stay logged in during session
-async function init() {
-  const savedUser = Store.getUser();
-  if (savedUser) {
-    const password = sessionStorage.getItem('planningbox_password');
-    if (password) {
-      try {
-        currentPassword = password;
-        currentUser = savedUser;
-        currentData = await Store.getData(password);
-      } catch (e) {
-        sessionStorage.removeItem('planningbox_password');
-        Store.clear();
-      }
-    }
+// Initialize
+function init() {
+  currentUser = Store.getUser();
+  if (currentUser) {
+    currentData = Store.getData();
   }
   renderLoginOrDashboard();
 }
@@ -30,16 +18,6 @@ async function init() {
 function renderLoginOrDashboard() {
   if (currentUser && currentData) {
     renderDashboard();
-  } else {
-    renderLogin();
-  }
-}
-
-function navigate(view, data = null) {
-  if (view === 'login' || view === 'register') {
-    renderLogin();
-  } else if (currentUser) {
-    renderView(view, data);
   } else {
     renderLogin();
   }
@@ -53,8 +31,7 @@ function renderView(view, data = null) {
     case 'idea-view': renderIdeaView(data); break;
     case 'plans': renderPlans(); break;
     case 'plan-view': renderPlanView(data); break;
-    case 'export': renderExport(); break;
-    case 'import': renderImport(); break;
+    case 'backup': renderBackup(); break;
     default: renderDashboard();
   }
 }
@@ -63,133 +40,47 @@ function renderView(view, data = null) {
 function renderLogin() {
   app.innerHTML = `
     <div class="auth-container">
-      <h1>🔐 Planning Box</h1>
+      <h1>💡 Planning Box</h1>
+      <p class="subtitle">Shared planning for humans + AI agents</p>
       <div class="card">
-        <h2>Login</h2>
+        <h2>Enter Your Name</h2>
         <form id="login-form">
-          <input type="text" name="username" placeholder="Username" required>
-          <input type="password" name="password" placeholder="Password" required>
-          <button type="submit">Login</button>
+          <input type="text" name="username" placeholder="Your name" required>
+          <button type="submit">Continue</button>
         </form>
-        <p>New? <a href="#" data-action="register">Create account</a></p>
       </div>
     </div>
   `;
   
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
+  document.getElementById('login-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const form = e.target;
     const username = form.username.value.trim();
-    const password = form.password.value;
+    if (!username) return;
     
-    if (!username || !password) {
-      alert('Please fill in all fields');
-      return;
-    }
-    
-    try {
-      currentPassword = password;
-      currentData = await Store.getData(password);
-      currentUser = { username };
-      Store.setUser(currentUser);
-      sessionStorage.setItem('planningbox_password', password);
-      renderDashboard();
-    } catch (err) {
-      alert('Invalid username or password');
-    }
-  });
-  
-  document.querySelector('[data-action="register"]').addEventListener('click', (e) => {
-    e.preventDefault();
-    renderRegister();
+    currentUser = { username };
+    Store.setUser(currentUser);
+    currentData = Store.getData();
+    renderDashboard();
   });
 }
 
-// Register
-function renderRegister() {
-  app.innerHTML = `
-    <div class="auth-container">
-      <h1>🔐 Planning Box</h1>
-      <div class="card">
-        <h2>Create Account</h2>
-        <form id="register-form">
-          <input type="text" name="username" placeholder="Choose a username" required>
-          <input type="password" name="password" placeholder="Choose a password (min 8 chars)" required>
-          <input type="password" name="confirm" placeholder="Confirm password" required>
-          <button type="submit">Create Account</button>
-        </form>
-        <p>Already have one? <a href="#" data-action="login">Login</a></p>
-      </div>
-    </div>
-  `;
-  
-  document.getElementById('register-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const username = form.username.value.trim();
-    const password = form.password.value;
-    const confirm = form.confirm.value;
-    
-    if (password.length < 8) {
-      alert('Password must be at least 8 characters');
-      return;
-    }
-    
-    if (password !== confirm) {
-      alert('Passwords do not match');
-      return;
-    }
-    
-    try {
-      currentPassword = password;
-      currentData = await Store.createNewData(password);
-      currentUser = { username };
-      Store.setUser(currentUser);
-      sessionStorage.setItem('planningbox_password', password);
-      renderDashboard();
-    } catch (err) {
-      alert('Failed to create account');
-    }
-  });
-  
-  document.querySelector('[data-action="login"]').addEventListener('click', (e) => {
-    e.preventDefault();
-    renderLogin();
-  });
-}
-
-// Dashboard with status filter
+// Dashboard
 function renderDashboard(filterStatus = 'all') {
-  // If somehow no data, show login
-  if (!currentData) {
-    renderLogin();
-    return;
-  }
-  
-  // Backward compatibility: convert old "uploads" to "ideas"
-  if (currentData.uploads && !currentData.ideas) {
-    currentData.ideas = currentData.uploads;
-    delete currentData.uploads;
-    Store.saveData(currentData, currentPassword);
-  }
+  if (!currentData) currentData = Store.getData();
   
   const ideas = currentData.ideas || [];
-  const counts = { all: 0, open: 0, processing: 0, planned: 0, complete: 0 };
-  ideas.forEach(u => {
-    counts.all++;
-    if (counts[u.status] !== undefined) counts[u.status]++;
+  const plans = currentData.plans || [];
+  
+  const counts = { all: ideas.length, open: 0, processing: 0, planned: 0, complete: 0 };
+  ideas.forEach(i => {
+    if (counts[i.status] !== undefined) counts[i.status]++;
   });
   
-  const filteredIdeas = filterStatus === 'all' 
-    ? ideas 
-    : ideas.filter(i => i.status === filterStatus);
+  const filteredIdeas = filterStatus === 'all' ? ideas : ideas.filter(i => i.status === filterStatus);
   
-  // Mark ideas that are linked to plans
-  const plans = getPlans();
   const linkedIdeaIds = new Set();
-  plans.forEach(p => {
-    (p.ideaIds || []).forEach(id => linkedIdeaIds.add(id));
-  });
+  plans.forEach(p => (p.ideaIds || []).forEach(id => linkedIdeaIds.add(id)));
   
   app.innerHTML = `
     <header class="header">
@@ -197,6 +88,7 @@ function renderDashboard(filterStatus = 'all') {
         <h1>💡 Planning Box</h1>
         <nav>
           <span>Welcome, ${escapeHtml(currentUser.username)}</span>
+          <a href="#" data-action="backup">💾 Backup</a>
           <a href="#" data-action="logout">Logout</a>
         </nav>
       </div>
@@ -215,8 +107,7 @@ function renderDashboard(filterStatus = 'all') {
       </div>
       
       <div class="section">
-        <h2>💡 Your Ideas</h2>
-        
+        <h2>💡 Ideas</h2>
         <div class="idea-list">
           ${filteredIdeas.length === 0 ? '<p class="empty">No ideas yet. Create one to get started!</p>' : ''}
           ${filteredIdeas.map(i => `
@@ -228,9 +119,7 @@ function renderDashboard(filterStatus = 'all') {
                   ${linkedIdeaIds.has(i.id) ? '<span class="linked-badge">📎 Linked to plan</span>' : ''}
                   <span class="date">${formatDate(i.createdAt)}</span>
                 </div>
-                <div class="idea-tags">
-                  ${(i.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
-                </div>
+                <div class="idea-tags">${(i.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
               </div>
               <div class="idea-actions">
                 <button class="btn-small" data-action="idea-view" data-id="${i.id}">View</button>
@@ -246,22 +135,20 @@ function renderDashboard(filterStatus = 'all') {
           <h2>📄 Agent Plans</h2>
           <button class="btn-secondary" data-action="plans">View All Plans</button>
         </div>
-        
         <div class="plan-preview-list">
-          ${plans.length === 0 ? '<p class="empty">No agent-generated plans yet. Agents will create plans linked to your ideas.</p>' : ''}
+          ${plans.length === 0 ? '<p class="empty" style="text-align:center;padding:20px;">No agent-generated plans yet.<br>Agents will create plans linked to your ideas.</p>' : ''}
           ${plans.slice(0, 3).map(p => `
             <div class="plan-preview" data-action="plan-view" data-id="${p.id}">
               <div class="plan-preview-title">${escapeHtml(p.title)}</div>
               <div class="plan-preview-meta">
-                <span>${(p.ideaIds || []).length} ideas linked</span>
+                <span>${(p.ideaIds || []).length} ideas</span>
                 <span>${p.phases?.length || 0} phases</span>
               </div>
               <div class="plan-preview-ideas">
                 ${(p.ideaIds || []).slice(0, 3).map(iid => {
-                  const idea = currentData.ideas.find(i => i.id === iid);
+                  const idea = ideas.find(i => i.id === iid);
                   return idea ? `<span class="tag">${escapeHtml(idea.title.substring(0, 20))}</span>` : '';
                 }).join('')}
-                ${(p.ideaIds || []).length > 3 ? `<span class="tag">+${(p.ideaIds || []).length - 3} more</span>` : ''}
               </div>
             </div>
           `).join('')}
@@ -270,19 +157,16 @@ function renderDashboard(filterStatus = 'all') {
     </main>
   `;
   
-  setupDashboardListeners(filterStatus);
+  setupListeners();
 }
 
 function getStatusIcon(status) {
-  const icons = { open: '🆕', processing: '🔄', planned: '📋', complete: '✅' };
-  return icons[status] || '';
+  return { open: '🆕', processing: '🔄', planned: '📋', complete: '✅' }[status] || '';
 }
 
-function setupDashboardListeners(filterStatus) {
+function setupListeners() {
   document.querySelectorAll('[data-status]').forEach(el => {
-    el.addEventListener('click', () => {
-      renderDashboard(el.dataset.status);
-    });
+    el.addEventListener('click', () => renderDashboard(el.dataset.status));
   });
   
   document.querySelectorAll('[data-action="logout"]').forEach(el => {
@@ -290,43 +174,30 @@ function setupDashboardListeners(filterStatus) {
       e.preventDefault();
       currentUser = null;
       currentData = null;
-      currentPassword = null;
       Store.clear();
       renderLogin();
     });
   });
   
-  document.querySelectorAll('[data-action="idea-new"]').forEach(el => {
-    el.addEventListener('click', () => renderIdeaForm(null));
-  });
-  
-  document.querySelectorAll('[data-action="idea-view"]').forEach(el => {
-    el.addEventListener('click', () => renderIdeaView(el.dataset.id));
-  });
-  
-  document.querySelectorAll('[data-action="idea-edit"]').forEach(el => {
-    el.addEventListener('click', () => renderIdeaForm(el.dataset.id));
-  });
-  
-  document.querySelectorAll('[data-action="plans"]').forEach(el => {
-    el.addEventListener('click', () => renderPlans());
-  });
-  
-  document.querySelectorAll('.plan-preview').forEach(el => {
-    el.addEventListener('click', () => renderPlanView(el.dataset.id));
-  });
-  
-  }
+  document.querySelectorAll('[data-action="idea-new"]').forEach(el => el.addEventListener('click', () => renderIdeaForm(null)));
+  document.querySelectorAll('[data-action="idea-view"]').forEach(el => el.addEventListener('click', () => renderIdeaView(el.dataset.id)));
+  document.querySelectorAll('[data-action="idea-edit"]').forEach(el => el.addEventListener('click', () => renderIdeaForm(el.dataset.id)));
+  document.querySelectorAll('[data-action="plans"]').forEach(el => el.addEventListener('click', () => renderPlans()));
+  document.querySelectorAll('.plan-preview').forEach(el => el.addEventListener('click', () => renderPlanView(el.dataset.id)));
+  document.querySelectorAll('[data-action="backup"]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); renderBackup(); }));
+}
 
 // Idea Form
 function renderIdeaForm(id) {
-  const ideas = getIdeas();
+  if (!currentData) currentData = Store.getData();
+  const ideas = currentData.ideas || [];
   const idea = id ? ideas.find(i => i.id === id) : null;
   
   app.innerHTML = `
     <div class="form-container">
       <h1>${id ? '✏️ Edit Idea' : '💡 New Idea'}</h1>
       <form id="idea-form">
+        <label>Title</label>
         <input type="text" name="title" placeholder="What's your idea?" value="${escapeHtml(idea?.title || '')}" required>
         
         <label>Status</label>
@@ -356,6 +227,9 @@ function renderIdeaForm(id) {
     e.preventDefault();
     const form = e.target;
     
+    if (!currentData) currentData = Store.getData();
+    const ideas = currentData.ideas || [];
+    
     const data = {
       id: id || Store.generateId(),
       title: form.title.value.trim(),
@@ -367,26 +241,25 @@ function renderIdeaForm(id) {
     };
     
     if (id) {
-      const idx = currentData.ideas.findIndex(i => i.id === id);
-      if (idx >= 0) currentData.ideas[idx] = data;
+      const idx = ideas.findIndex(i => i.id === id);
+      if (idx >= 0) ideas[idx] = data;
     } else {
-      currentData.ideas.push(data);
+      ideas.push(data);
     }
     
-    await Store.saveData(currentData, currentPassword);
+    currentData.ideas = ideas;
+    Store.saveData(currentData);
     renderDashboard();
   });
   
-  document.querySelector('[data-action="dashboard"]').addEventListener('click', (e) => {
-    e.preventDefault();
-    renderDashboard();
-  });
+  document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
   
   if (id) {
-    document.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+    document.querySelector('[data-action="delete"]').addEventListener('click', () => {
       if (confirm('Delete this idea?')) {
-        currentData.ideas = currentData.ideas.filter(i => i.id !== id);
-        await Store.saveData(currentData, currentPassword);
+        if (!currentData) currentData = Store.getData();
+        currentData.ideas = (currentData.ideas || []).filter(i => i.id !== id);
+        Store.saveData(currentData);
         renderDashboard();
       }
     });
@@ -395,12 +268,12 @@ function renderIdeaForm(id) {
 
 // Idea View
 function renderIdeaView(id) {
-  const ideas = getIdeas();
-  const plans = getPlans();
+  if (!currentData) currentData = Store.getData();
+  const ideas = currentData.ideas || [];
+  const plans = currentData.plans || [];
   const idea = ideas.find(i => i.id === id);
   if (!idea) return renderDashboard();
   
-  // Find plans that reference this idea
   const linkedPlans = plans.filter(p => (p.ideaIds || []).includes(id));
   
   app.innerHTML = `
@@ -418,9 +291,7 @@ function renderIdeaView(id) {
           <span>Updated: ${formatDate(idea.updatedAt)}</span>
         </div>
         
-        <div class="tags">
-          ${(idea.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
-        </div>
+        <div class="tags">${(idea.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
         
         <div class="content">${escapeHtml(idea.content).replace(/\n/g, '<br>')}</div>
         
@@ -431,7 +302,7 @@ function renderIdeaView(id) {
       
       ${linkedPlans.length > 0 ? `
         <div class="linked-plans-section">
-          <h2>📄 Linked Plans</h2>
+          <h3>📄 Linked Plans</h3>
           <div class="linked-plans-list">
             ${linkedPlans.map(p => `
               <div class="linked-plan-item" data-action="plan-view" data-id="${p.id}">
@@ -447,34 +318,20 @@ function renderIdeaView(id) {
   
   document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
   document.querySelector('[data-action="idea-edit"]').addEventListener('click', () => renderIdeaForm(id));
-  
-  document.querySelectorAll('.linked-plan-item').forEach(el => {
-    el.addEventListener('click', () => renderPlanView(el.dataset.id));
-  });
+  document.querySelectorAll('.linked-plan-item').forEach(el => el.addEventListener('click', () => renderPlanView(el.dataset.id)));
 }
 
-// Helper to ensure backward compatibility
-function getIdeas() {
-  if (currentData.uploads && !currentData.ideas) {
-    currentData.ideas = currentData.uploads;
-    delete currentData.uploads;
-    Store.saveData(currentData, currentPassword);
-  }
-  return currentData.ideas || [];
-}
-
-function getPlans() {
-  return currentData.plans || [];
-}
-
+// Plans
 function renderPlans() {
-  const ideas = getIdeas();
-  const plans = getPlans();
+  if (!currentData) currentData = Store.getData();
+  const ideas = currentData.ideas || [];
+  const plans = currentData.plans || [];
+  
   app.innerHTML = `
     <div class="view-container">
       <button class="btn-back" data-action="dashboard">← Back</button>
       <h1>📄 Agent Plans</h1>
-      <p class="info">These plans were generated by AI agents based on your ideas.</p>
+      <p class="info">Plans generated by AI agents based on your ideas.</p>
       
       <div class="plan-list">
         ${plans.length === 0 ? '<p class="empty" style="text-align:center;padding:20px;">No agent-generated plans yet.<br>Agents will create plans linked to your ideas.</p>' : ''}
@@ -500,16 +357,14 @@ function renderPlans() {
   `;
   
   document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
-  
-  document.querySelectorAll('.plan-card').forEach(el => {
-    el.addEventListener('click', () => renderPlanView(el.dataset.id));
-  });
+  document.querySelectorAll('.plan-card').forEach(el => el.addEventListener('click', () => renderPlanView(el.dataset.id)));
 }
 
 // Plan View
 function renderPlanView(id) {
-  const ideas = getIdeas();
-  const plans = getPlans();
+  if (!currentData) currentData = Store.getData();
+  const ideas = currentData.ideas || [];
+  const plans = currentData.plans || [];
   const plan = plans.find(p => p.id === id);
   if (!plan) return renderPlans();
   
@@ -525,9 +380,7 @@ function renderPlanView(id) {
           <span class="plan-badge">Agent Generated</span>
         </div>
         
-        <div class="meta">
-          <span>Created: ${formatDate(plan.createdAt)}</span>
-        </div>
+        <div class="meta"><span>Created: ${formatDate(plan.createdAt)}</span></div>
         
         <div class="plan-content">
           <h3>Description</h3>
@@ -543,15 +396,13 @@ function renderPlanView(id) {
                 <div class="linked-idea-status">
                   <span class="status-badge ${idea.status}">${getStatusIcon(idea.status)} ${idea.status}</span>
                 </div>
-                <div class="linked-idea-tags">
-                  ${(idea.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
-                </div>
+                <div class="linked-idea-tags">${(idea.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>
               </div>
             `).join('')}
           </div>
         </div>
         
-        ${plan.phases && plan.phases.length > 0 ? `
+        ${plan.phases?.length ? `
           <div class="phases-section">
             <h3>📋 Implementation Phases</h3>
             <div class="phases-timeline">
@@ -561,10 +412,7 @@ function renderPlanView(id) {
                   <div class="phase-content">
                     <h4>${escapeHtml(phase.title)}</h4>
                     <p>${escapeHtml(phase.description || '')}</p>
-                    ${phase.tasks ? `<div class="phase-tasks">
-                      <strong>Tasks:</strong>
-                      ${phase.tasks.map(t => `<div class="task-item">• ${escapeHtml(t)}</div>`).join('')}
-                    </div>` : ''}
+                    ${phase.tasks ? `<div class="phase-tasks"><strong>Tasks:</strong>${phase.tasks.map(t => `<div class="task-item">• ${escapeHtml(t)}</div>`).join('')}</div>` : ''}
                   </div>
                 </div>
               `).join('')}
@@ -576,61 +424,50 @@ function renderPlanView(id) {
   `;
   
   document.querySelector('[data-action="plans"]').addEventListener('click', () => renderPlans());
-  
-  document.querySelectorAll('[data-action="idea-view"]').forEach(el => {
-    el.addEventListener('click', () => renderIdeaView(el.dataset.id));
-  });
+  document.querySelectorAll('[data-action="idea-view"]').forEach(el => el.addEventListener('click', () => renderIdeaView(el.dataset.id)));
 }
 
-// Export
-function renderExport() {
-  const json = Store.exportJSON();
-  
+// Backup
+function renderBackup() {
   app.innerHTML = `
     <div class="view-container">
       <button class="btn-back" data-action="dashboard">← Back</button>
-      <h1>📤 Export Data</h1>
-      <p>Copy this JSON to share with agents or back up your data:</p>
-      <textarea id="export-area" rows="15">${escapeHtml(json)}</textarea>
-      <button class="btn-primary" id="copy-btn">Copy to Clipboard</button>
+      <h1>💾 Backup & Restore</h1>
+      <p class="info">Download a backup of all ideas and plans, or restore from a previous backup.</p>
+      
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>📥 Download Backup</h3>
+        <p style="color: var(--text-muted); margin: 10px 0;">Save your ideas and plans to a JSON file.</p>
+        <button class="btn-primary" id="export-btn">Download JSON</button>
+      </div>
+      
+      <div class="card">
+        <h3>📤 Restore from Backup</h3>
+        <p style="color: var(--text-muted); margin: 10px 0;">Upload a previously downloaded JSON backup file.</p>
+        <input type="file" id="import-file" accept=".json" style="margin-bottom: 15px;">
+        <button class="btn-secondary" id="import-btn">Restore Backup</button>
+      </div>
     </div>
   `;
   
   document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
-  document.getElementById('copy-btn').addEventListener('click', () => {
-    document.getElementById('export-area').select();
-    document.execCommand('copy');
-    alert('Copied!');
-  });
-}
-
-// Import
-function renderImport() {
-  app.innerHTML = `
-    <div class="view-container">
-      <button class="btn-back" data-action="dashboard">← Back</button>
-      <h1>📥 Import Data</h1>
-      <p>Paste a previously exported JSON to import:</p>
-      <textarea id="import-area" rows="15" placeholder="Paste JSON here..."></textarea>
-      <button class="btn-primary" id="import-btn">Import</button>
-    </div>
-  `;
   
-  document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
+  document.getElementById('export-btn').addEventListener('click', () => {
+    Store.exportToFile();
+  });
+  
   document.getElementById('import-btn').addEventListener('click', async () => {
-    const json = document.getElementById('import-area').value.trim();
-    if (!json) {
-      alert('Please paste JSON data');
+    const file = document.getElementById('import-file').files[0];
+    if (!file) {
+      alert('Please select a file first');
       return;
     }
-    
     try {
-      await Store.importJSON(json, currentPassword);
-      currentData = await Store.getData(currentPassword);
-      alert('Import successful!');
+      currentData = await Store.importFromFile(file);
+      alert('Backup restored successfully!');
       renderDashboard();
     } catch (e) {
-      alert('Import failed: ' + e.message);
+      alert('Failed to restore: ' + e.message);
     }
   });
 }
