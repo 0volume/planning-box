@@ -10,10 +10,25 @@ let currentPassword = null;
 
 // Initialize
 async function init() {
-  currentUser = Store.getUser();
-  if (currentUser) {
-    renderDashboard();
-  } else {
+  try {
+    currentUser = Store.getUser();
+    if (currentUser) {
+      // Try to load data, if fails show login
+      try {
+        currentPassword = ''; // Will be needed for decrypt, prompt
+        renderDashboard();
+      } catch (e) {
+        console.error('Failed to load data:', e);
+        currentUser = null;
+        Store.clear();
+        renderLogin();
+      }
+    } else {
+      renderLogin();
+    }
+  } catch (e) {
+    console.error('Init error:', e);
+    Store.clear();
     renderLogin();
   }
 }
@@ -141,6 +156,17 @@ function renderRegister() {
 
 // Dashboard with status filter
 function renderDashboard(filterStatus = 'all') {
+  // If no data loaded yet, need to get password first
+  if (!currentData) {
+    const password = prompt('Enter your password to unlock your data:');
+    if (!password) {
+      renderLogin();
+      return;
+    }
+    loadDataAndRender(password, filterStatus);
+    return;
+  }
+  
   // Backward compatibility: convert old "uploads" to "ideas"
   if (currentData.uploads && !currentData.ideas) {
     currentData.ideas = currentData.uploads;
@@ -437,7 +463,24 @@ function renderIdeaView(id) {
   });
 }
 
-// Plans List
+}
+
+// Load data with password and render
+async function loadDataAndRender(password, filterStatus) {
+  try {
+    currentPassword = password;
+    currentData = await Store.getData(password);
+    renderDashboard(filterStatus);
+  } catch (e) {
+    alert('Invalid password or corrupted data. Please login again.');
+    Store.clear();
+    currentUser = null;
+    currentData = null;
+    currentPassword = null;
+    renderLogin();
+  }
+}
+
 // Helper to ensure backward compatibility
 function getIdeas() {
   if (currentData.uploads && !currentData.ideas) {
