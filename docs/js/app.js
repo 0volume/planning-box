@@ -463,8 +463,6 @@ function renderIdeaView(id) {
   });
 }
 
-}
-
 // Load data with password and render
 async function loadDataAndRender(password, filterStatus) {
   try {
