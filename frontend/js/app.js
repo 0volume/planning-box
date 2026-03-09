@@ -8,27 +8,34 @@ let currentUser = null;
 let currentData = null;
 let currentPassword = null;
 
-// Initialize
+// Initialize - prompt for password once if user exists
 async function init() {
-  try {
-    currentUser = Store.getUser();
-    if (currentUser) {
-      // Try to load data, if fails show login
-      try {
-        currentPassword = ''; // Will be needed for decrypt, prompt
-        renderDashboard();
-      } catch (e) {
-        console.error('Failed to load data:', e);
-        currentUser = null;
-        Store.clear();
-        renderLogin();
-      }
-    } else {
+  const savedUser = Store.getUser();
+  if (savedUser) {
+    const password = prompt('Enter your password to unlock your data:');
+    if (!password) {
+      Store.clear();
       renderLogin();
+      return;
     }
-  } catch (e) {
-    console.error('Init error:', e);
-    Store.clear();
+    try {
+      currentPassword = password;
+      currentUser = savedUser;
+      currentData = await Store.getData(password);
+    } catch (e) {
+      alert('Invalid password');
+      Store.clear();
+      renderLogin();
+      return;
+    }
+  }
+  renderLoginOrDashboard();
+}
+
+function renderLoginOrDashboard() {
+  if (currentUser && currentData) {
+    renderDashboard();
+  } else {
     renderLogin();
   }
 }
@@ -156,14 +163,9 @@ function renderRegister() {
 
 // Dashboard with status filter
 function renderDashboard(filterStatus = 'all') {
-  // If no data loaded yet, need to get password first
+  // If somehow no data, show login
   if (!currentData) {
-    const password = prompt('Enter your password to unlock your data:');
-    if (!password) {
-      renderLogin();
-      return;
-    }
-    loadDataAndRender(password, filterStatus);
+    renderLogin();
     return;
   }
   
@@ -461,22 +463,6 @@ function renderIdeaView(id) {
   document.querySelectorAll('.linked-plan-item').forEach(el => {
     el.addEventListener('click', () => renderPlanView(el.dataset.id));
   });
-}
-
-// Load data with password and render
-async function loadDataAndRender(password, filterStatus) {
-  try {
-    currentPassword = password;
-    currentData = await Store.getData(password);
-    renderDashboard(filterStatus);
-  } catch (e) {
-    alert('Invalid password or corrupted data. Please login again.');
-    Store.clear();
-    currentUser = null;
-    currentData = null;
-    currentPassword = null;
-    renderLogin();
-  }
 }
 
 // Helper to ensure backward compatibility
