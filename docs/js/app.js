@@ -9,16 +9,16 @@ let currentData = null;
 // Initialize
 async function init() {
   try {
-    // Try to sync from shared Gist first
+    // Try to sync from shared Gist on load
     const syncedData = await Store.syncFromGist();
     if (syncedData) {
-      console.log('Loaded shared data from Gist');
+      console.log('Loaded from shared Gist');
     }
     
     currentUser = Store.getUser();
     if (currentUser) {
       currentData = Store.getData();
-      if (!currentData) {
+      if (!currentData || !currentData.ideas) {
         currentData = { ideas: [], plans: [], version: 2 };
         Store.saveData(currentData);
       }
@@ -452,28 +452,150 @@ function renderPlanView(id) {
 
 // Backup
 function renderBackup() {
+  const hasToken = !!Store.getToken();
+  const backups = Store.getBackups();
+  
   app.innerHTML = `
     <div class="view-container">
       <button class="btn-back" data-action="dashboard">← Back</button>
-      <h1>💾 Backup & Restore</h1>
-      <p class="info">Download a backup of all ideas and plans, or restore from a previous backup.</p>
+      <h1>💾 Backup & Sync</h1>
+      
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>🔄 Sync from Shared Gist</h3>
+        <p style="color: var(--text-muted); margin: 10px 0;">Pull latest data from other users.</p>
+        <button class="btn-primary" id="sync-btn">🔄 Sync Now</button>
+      </div>
+      
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>⚙️ GitHub Token (for sharing)</h3>
+        <p style="color: var(--text-muted); margin: 10px 0;">Add token to enable saving to shared Gist. Get one at github.com/settings/tokens (gist scope)</p>
+        <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx" value="" style="margin-bottom: 10px;">
+        <button class="btn-primary" id="save-token-btn">Save Token</button>
+        ${hasToken ? '<span style="margin-left:10px;color:var(--success)">✓ Token saved</span>' : ''}
+      </div>
       
       <div class="card" style="margin-bottom: 20px;">
         <h3>📥 Download Backup</h3>
-        <p style="color: var(--text-muted); margin: 10px 0;">Save your ideas and plans to a JSON file.</p>
-        <button class="btn-primary" id="export-btn">Download JSON</button>
+        <p style="color: var(--text-muted); margin: 10px 0;">Save to a JSON file.</p>
+        <button class="btn-secondary" id="export-btn">Download JSON</button>
       </div>
       
-      <div class="card">
+      <div class="card" style="margin-bottom: 20px;">
         <h3>📤 Restore from Backup</h3>
-        <p style="color: var(--text-muted); margin: 10px 0;">Upload a previously downloaded JSON backup file.</p>
+        <p style="color: var(--text-muted); margin: 10px 0;">Upload a backup file.</p>
         <input type="file" id="import-file" accept=".json" style="margin-bottom: 15px;">
-        <button class="btn-secondary" id="import-btn">Restore Backup</button>
+        <button class="btn-secondary" id="import-btn">Restore</button>
       </div>
+      
+      ${backups.length > 0 ? `
+      <div class="card">
+        <h3>🕐 Recent Backups (auto-saved)</h3>
+        <p style="color: var(--text-muted); margin: 10px 0;">Click to restore a previous version.</p>
+        ${backups.slice(0, 5).map(b => `
+          <div style="padding:10px;margin:5px 0;background:var(--bg);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span>${new Date(b.timestamp).toLocaleString()} - ${b.ideas} ideas, ${b.plans} plans</span>
+            <button class="btn-small restore-backup" data-index="${b.index}">Restore</button>
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
     </div>
   `;
   
   document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
+  
+  // Sync button
+  document.getElementById('sync-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('sync-btn');
+    btn.textContent = 'Syncing...';
+    btn.disabled = true;
+    try {
+      const data = await Store.syncFromGist();
+      if (data) {
+        currentData = data;
+        alert('Synced! Loaded ' + (data.ideas?.length || 0) + ' ideas from Gist.');
+      } else {
+        alert('No data from Gist or sync failed.');
+      }
+    } catch (e) {
+      alert('Sync failed: ' + e.message);
+    }
+    btn.textContent = '🔄 Sync Now';
+    btn.disabled = false;
+  });
+  
+  // Save token
+  document.getElementById('save-token-btn').addEventListener('click', () => {
+    const token = document.getElementById('github-token').value.trim();
+    if (token) {
+      Store.setToken(token);
+      alert('Token saved! Your changes will now sync to the shared Gist.');
+      renderBackup();
+    }
+  });
+  
+  // Export
+  document.getElementById('export-btn').addEventListener('click', () => {
+    Store.exportToFile();
+  });
+  
+  // Import
+  document.getElementById('import-btn').addEventListener('click', async () => {
+    const file = document.getElementById('import-file').files[0];
+    if (!file) {
+      alert('Select a file first');
+      return;
+    }
+    try {
+      const data = await Store.importFromFile(file);
+      currentData = data;
+      alert('Restored!');
+      renderDashboard();
+    } catch (e) {
+      alert('Failed: ' + e.message);
+    }
+  });
+  
+  // Restore backups
+  document.querySelectorAll('.restore-backup').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (confirm('Restore this backup? Current data will be backed up first.')) {
+        const data = Store.restoreBackup(parseInt(btn.dataset.index));
+        if (data) {
+          currentData = data;
+          alert('Restored!');
+          renderDashboard();
+        }
+      }
+    });
+  });
+}
+      renderBackup();
+    } catch (e) {
+      alert('Sync failed: ' + e.message);
+    }
+  });
+  
+  // Save token
+  document.getElementById('save-token-btn').addEventListener('click', () => {
+    const token = document.getElementById('github-token').value.trim();
+    if (!token) {
+      alert('Please enter a token');
+      return;
+    }
+    Store.setToken(token);
+    alert('Token saved! Shared sync is now enabled.');
+    renderBackup();
+  });
+  
+  // Clear token
+  document.getElementById('clear-token-btn').addEventListener('click', () => {
+    if (confirm('Clear GitHub token? Shared sync will be disabled.')) {
+      Store.clearToken();
+      alert('Token cleared.');
+      renderBackup();
+    }
+  });
   
   document.getElementById('export-btn').addEventListener('click', () => {
     Store.exportToFile();
