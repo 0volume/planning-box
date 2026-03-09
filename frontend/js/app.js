@@ -570,50 +570,31 @@ function renderBackup() {
     });
   });
 }
-      renderBackup();
-    } catch (e) {
-      alert('Sync failed: ' + e.message);
-    }
-  });
-  
-  // Save token
-  document.getElementById('save-token-btn').addEventListener('click', () => {
-    const token = document.getElementById('github-token').value.trim();
-    if (!token) {
-      alert('Please enter a token');
-      return;
-    }
-    Store.setToken(token);
-    alert('Token saved! Shared sync is now enabled.');
-    renderBackup();
-  });
-  
-  // Clear token
-  document.getElementById('clear-token-btn').addEventListener('click', () => {
-    if (confirm('Clear GitHub token? Shared sync will be disabled.')) {
-      Store.clearToken();
-      alert('Token cleared.');
-      renderBackup();
-    }
-  });
-  
-  document.getElementById('export-btn').addEventListener('click', () => {
-    Store.exportToFile();
-  });
-  
+
+// Export to file
+function renderExport() {
+  Store.exportToFile();
+  renderDashboard();
+}
+
+// Import from file
+function renderImport() {
+  app.innerHTML = `
+    <div class="view-container">
+      <button class="btn-back" data-action="dashboard">← Back</button>
+      <h1>Import Data</h1>
+      <input type="file" id="import-file" accept=".json">
+      <button id="import-btn">Import</button>
+    </div>
+  `;
+  document.querySelector('[data-action="dashboard"]').addEventListener('click', () => renderDashboard());
   document.getElementById('import-btn').addEventListener('click', async () => {
     const file = document.getElementById('import-file').files[0];
-    if (!file) {
-      alert('Please select a file first');
-      return;
-    }
-    try {
-      await Store.importFromFile(file);
-      currentData = Store.getData();
-      alert('Backup restored successfully!');
+    if (file) {
+      const data = await Store.importFromFile(file);
+      currentData = data;
+      alert('Imported!');
       renderDashboard();
-    } catch (e) {
-      alert('Failed to restore: ' + e.message);
     }
   });
 }
